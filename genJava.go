@@ -32,6 +32,7 @@ var javaBuildInType = map[string]bool{
 // GenJava generate Java programming language source code for XML schema
 // definition files.
 func (gen *CodeGenerator) GenJava() error {
+	fieldNameCount = make(map[string]int)
 	for _, ele := range gen.ProtoTree {
 		if ele == nil {
 			continue
@@ -62,7 +63,7 @@ import javax.xml.bind.annotation.XmlValue;`
 	return err
 }
 
-func genJavaFieldName(name string) (fieldName string) {
+func genJavaFieldName(name string, unique bool) (fieldName string) {
 	for _, str := range strings.Split(name, ":") {
 		fieldName += MakeFirstUpperCase(str)
 	}
@@ -72,6 +73,12 @@ func genJavaFieldName(name string) (fieldName string) {
 	}
 	fieldName = tmp
 	fieldName = strings.Replace(fieldName, "-", "", -1)
+	if unique {
+		fieldNameCount[fieldName]++
+		if count := fieldNameCount[fieldName]; count != 1 {
+			fieldName = fmt.Sprintf("%s%d", fieldName, count)
+		}
+	}
 	return
 }
 
@@ -96,9 +103,9 @@ func (gen *CodeGenerator) JavaSimpleType(v *SimpleType) {
 	if v.List {
 		if _, ok := gen.StructAST[v.Name]; !ok {
 			fieldType := genJavaFieldType(getBasefromSimpleType(trimNSPrefix(v.Base), gen.ProtoTree))
-			content := fmt.Sprintf("\tprotected List<%s> %s;\n", fieldType, genJavaFieldName(v.Name))
+			content := fmt.Sprintf("\tprotected List<%s> %s;\n", fieldType, genJavaFieldName(v.Name, false))
 			gen.StructAST[v.Name] = content
-			gen.Field += fmt.Sprintf("\n@XmlAccessorType(XmlAccessType.FIELD)\n@XmlAttribute(required = true, name = \"%s\")\npublic class %s {\n%s}\n", v.Name, genJavaFieldName(v.Name), gen.StructAST[v.Name])
+			gen.Field += fmt.Sprintf("\n@XmlAccessorType(XmlAccessType.FIELD)\n@XmlAttribute(required = true, name = \"%s\")\npublic class %s {\n%s}\n", v.Name, genJavaFieldName(v.Name, true), gen.StructAST[v.Name])
 			return
 		}
 	}
@@ -113,23 +120,22 @@ func (gen *CodeGenerator) JavaSimpleType(v *SimpleType) {
 					memberType = getBasefromSimpleType(memberName, gen.ProtoTree)
 				}
 				fieldType := genJavaFieldType(memberType)
-				content += fmt.Sprintf("\t@XmlElement(required = true)\n\tprotected %s %s;\n", fieldType, genJavaFieldName(memberName))
+				content += fmt.Sprintf("\t@XmlElement(required = true)\n\tprotected %s %s;\n", fieldType, genJavaFieldName(memberName, false))
 			}
 			content += "}\n"
 			gen.StructAST[v.Name] = content
-			fieldName := genJavaFieldName(v.Name)
+			fieldName := genJavaFieldName(v.Name, true)
 			gen.Field += fmt.Sprintf("%spublic class %s%s", genFieldComment(fieldName, v.Doc, "//"), fieldName, gen.StructAST[v.Name])
 		}
 		return
 	}
 	if _, ok := gen.StructAST[v.Name]; !ok {
 		fieldType := genJavaFieldType(getBasefromSimpleType(trimNSPrefix(v.Base), gen.ProtoTree))
-		content := fmt.Sprintf("\tprotected %s %s;\n", fieldType, genJavaFieldName(v.Name))
+		content := fmt.Sprintf("\tprotected %s %s;\n", fieldType, genJavaFieldName(v.Name, false))
 		gen.StructAST[v.Name] = content
-		fieldName := genJavaFieldName(v.Name)
+		fieldName := genJavaFieldName(v.Name, true)
 		gen.Field += fmt.Sprintf("%s@XmlAccessorType(XmlAccessType.FIELD)\n@XmlAttribute(required = true, name = \"%s\")\npublic class %s {\n%s}\n", genFieldComment(fieldName, v.Doc, "//"), v.Name, fieldName, gen.StructAST[v.Name])
 	}
-	return
 }
 
 // JavaComplexType generates code for complex type XML schema in Java language
@@ -139,7 +145,7 @@ func (gen *CodeGenerator) JavaComplexType(v *ComplexType) {
 		content := " {\n"
 		for _, attrGroup := range v.AttributeGroup {
 			fieldType := getBasefromSimpleType(trimNSPrefix(attrGroup.Ref), gen.ProtoTree)
-			content += fmt.Sprintf("\t@XmlElement(required = true)\n\tprotected %s %s;\n", genJavaFieldType(fieldType), genJavaFieldName(attrGroup.Name))
+			content += fmt.Sprintf("\t@XmlElement(required = true)\n\tprotected %s %s;\n", genJavaFieldType(fieldType), genJavaFieldName(attrGroup.Name, false))
 		}
 
 		for _, attribute := range v.Attributes {
@@ -148,14 +154,14 @@ func (gen *CodeGenerator) JavaComplexType(v *ComplexType) {
 				required = ""
 			}
 			fieldType := genJavaFieldType(getBasefromSimpleType(trimNSPrefix(attribute.Type), gen.ProtoTree))
-			content += fmt.Sprintf("\t@XmlAttribute(name = \"%s\"%s)\n\tprotected %s %sAttr;\n", attribute.Name, required, fieldType, genJavaFieldName(attribute.Name))
+			content += fmt.Sprintf("\t@XmlAttribute(name = \"%s\"%s)\n\tprotected %s %sAttr;\n", attribute.Name, required, fieldType, genJavaFieldName(attribute.Name, false))
 		}
 		for _, group := range v.Groups {
 			var fieldType = genJavaFieldType(getBasefromSimpleType(trimNSPrefix(group.Ref), gen.ProtoTree))
 			if group.Plural {
 				fieldType = fmt.Sprintf("List<%s>", fieldType)
 			}
-			content += fmt.Sprintf("\tprotected %s %s;\n", fieldType, genJavaFieldName(group.Name))
+			content += fmt.Sprintf("\tprotected %s %s;\n", fieldType, genJavaFieldName(group.Name, false))
 		}
 
 		for _, element := range v.Elements {
@@ -163,7 +169,7 @@ func (gen *CodeGenerator) JavaComplexType(v *ComplexType) {
 			if element.Plural {
 				fieldType = fmt.Sprintf("List<%s>", fieldType)
 			}
-			content += fmt.Sprintf("\t@XmlElement(required = true, name = \"%s\")\n\tprotected %s %s;\n", element.Name, fieldType, genJavaFieldName(element.Name))
+			content += fmt.Sprintf("\t@XmlElement(required = true, name = \"%s\")\n\tprotected %s %s;\n", element.Name, fieldType, genJavaFieldName(element.Name, false))
 		}
 
 		if len(v.Base) > 0 && isBuiltInJavaType(v.Base) {
@@ -173,7 +179,7 @@ func (gen *CodeGenerator) JavaComplexType(v *ComplexType) {
 
 		content += "}\n"
 		gen.StructAST[v.Name] = content
-		fieldName := genJavaFieldName(v.Name)
+		fieldName := genJavaFieldName(v.Name, true)
 
 		typeExtension := ""
 		if len(v.Base) > 0 && !isBuiltInJavaType(v.Base) {
@@ -183,7 +189,6 @@ func (gen *CodeGenerator) JavaComplexType(v *ComplexType) {
 
 		gen.Field += fmt.Sprintf("%spublic class %s%s%s", genFieldComment(fieldName, v.Doc, "//"), fieldName, typeExtension, gen.StructAST[v.Name])
 	}
-	return
 }
 
 func isBuiltInJavaType(typeName string) bool {
@@ -200,7 +205,7 @@ func (gen *CodeGenerator) JavaGroup(v *Group) {
 			if element.Plural {
 				fieldType = fmt.Sprintf("List<%s>", fieldType)
 			}
-			content += fmt.Sprintf("\t@XmlElement(required = true, name = \"%s\")\n\tprotected %s %s;\n", element.Name, fieldType, genJavaFieldName(element.Name))
+			content += fmt.Sprintf("\t@XmlElement(required = true, name = \"%s\")\n\tprotected %s %s;\n", element.Name, fieldType, genJavaFieldName(element.Name, false))
 		}
 
 		for _, group := range v.Groups {
@@ -208,15 +213,14 @@ func (gen *CodeGenerator) JavaGroup(v *Group) {
 			if group.Plural {
 				fieldType = fmt.Sprintf("List<%s>", fieldType)
 			}
-			content += fmt.Sprintf("\tprotected %s %s;\n", fieldType, genJavaFieldName(group.Name))
+			content += fmt.Sprintf("\tprotected %s %s;\n", fieldType, genJavaFieldName(group.Name, false))
 		}
 
 		content += "}\n"
 		gen.StructAST[v.Name] = content
-		fieldName := genJavaFieldName(v.Name)
+		fieldName := genJavaFieldName(v.Name, true)
 		gen.Field += fmt.Sprintf("%spublic class %s%s", genFieldComment(fieldName, v.Doc, "//"), fieldName, gen.StructAST[v.Name])
 	}
-	return
 }
 
 // JavaAttributeGroup generates code for attribute group XML schema in Java language
@@ -230,14 +234,13 @@ func (gen *CodeGenerator) JavaAttributeGroup(v *AttributeGroup) {
 				required = ""
 			}
 			fieldType := genJavaFieldType(getBasefromSimpleType(trimNSPrefix(attribute.Type), gen.ProtoTree))
-			content += fmt.Sprintf("\t@XmlAttribute(name = \"%s\"%s)\n\tprotected %sAttr %s;\n", attribute.Name, required, fieldType, genJavaFieldName(attribute.Name))
+			content += fmt.Sprintf("\t@XmlAttribute(name = \"%s\"%s)\n\tprotected %sAttr %s;\n", attribute.Name, required, fieldType, genJavaFieldName(attribute.Name, false))
 		}
 		content += "}\n"
 		gen.StructAST[v.Name] = content
-		fieldName := genJavaFieldName(v.Name)
+		fieldName := genJavaFieldName(v.Name, true)
 		gen.Field += fmt.Sprintf("%spublic class %s%s", genFieldComment(fieldName, v.Doc, "//"), fieldName, gen.StructAST[v.Name])
 	}
-	return
 }
 
 // JavaElement generates code for element XML schema in Java language syntax.
@@ -247,11 +250,10 @@ func (gen *CodeGenerator) JavaElement(v *Element) {
 		if v.Plural {
 			fieldType = fmt.Sprintf("List<%s>", fieldType)
 		}
-		content := fmt.Sprintf("\tprotected %s %s;\n", fieldType, genJavaFieldName(v.Name))
+		content := fmt.Sprintf("\tprotected %s %s;\n", fieldType, genJavaFieldName(v.Name, false))
 		gen.StructAST[v.Name] = content
-		gen.Field += fmt.Sprintf("\n@XmlAccessorType(XmlAccessType.FIELD)\n@XmlElement(required = true, name = \"%s\")\npublic class %s {\n%s}\n", v.Name, genJavaFieldName(v.Name), gen.StructAST[v.Name])
+		gen.Field += fmt.Sprintf("\n@XmlAccessorType(XmlAccessType.FIELD)\n@XmlElement(required = true, name = \"%s\")\npublic class %s {\n%s}\n", v.Name, genJavaFieldName(v.Name, true), gen.StructAST[v.Name])
 	}
-	return
 }
 
 // JavaAttribute generates code for attribute XML schema in Java language syntax.
@@ -261,9 +263,8 @@ func (gen *CodeGenerator) JavaAttribute(v *Attribute) {
 		if v.Plural {
 			fieldType = fmt.Sprintf("List<%s>", fieldType)
 		}
-		content := fmt.Sprintf("\tprotected %s %s;\n", fieldType, genJavaFieldName(v.Name))
+		content := fmt.Sprintf("\tprotected %s %s;\n", fieldType, genJavaFieldName(v.Name, false))
 		gen.StructAST[v.Name] = content
-		gen.Field += fmt.Sprintf("\n@XmlAccessorType(XmlAccessType.FIELD)\n@XmlAttribute(required = true, name = \"%s\")\npublic class %s {\n%s}\n", v.Name, genJavaFieldName(v.Name), gen.StructAST[v.Name])
+		gen.Field += fmt.Sprintf("\n@XmlAccessorType(XmlAccessType.FIELD)\n@XmlAttribute(required = true, name = \"%s\")\npublic class %s {\n%s}\n", v.Name, genJavaFieldName(v.Name, true), gen.StructAST[v.Name])
 	}
-	return
 }
