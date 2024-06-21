@@ -29,6 +29,15 @@ func (opt *Options) OnRestriction(ele xml.StartElement, protoTree []interface{})
 				if opt.SimpleType.Peek().(*SimpleType).Name == "" {
 					opt.SimpleType.Peek().(*SimpleType).Name = attr.Value
 				}
+			} else if opt.ComplexType.Peek() != nil {
+				var complexType = opt.ComplexType.Peek().(*ComplexType)
+				complexType.Base, err = opt.GetValueType(valueType, protoTree)
+				if err != nil {
+					return
+				}
+				if complexType.Name == "" {
+					complexType.Name = attr.Value
+				}
 			}
 		}
 	}
